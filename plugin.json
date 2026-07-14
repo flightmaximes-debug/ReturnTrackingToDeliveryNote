@@ -1,0 +1,17 @@
+{
+  "name": "ReturnTrackingToDeliveryNote",
+  "marketplaceName": {
+    "de": "Retouren-Sendungsnummer als externe Lieferscheinnummer",
+    "en": "Return tracking number as external delivery note number"
+  },
+  "namespace": "ReturnTrackingToDeliveryNote",
+  "type": "general",
+  "version": "0.3.0",
+  "license": "MIT",
+  "isClosedSource": false,
+  "description": "Test plugin restricted to order 468574 that writes the latest return tracking number and its order ID to the PlentyONE plugin log without changing the order.",
+  "author": "Internal Development",
+  "authorIcon": "author_icon.svg",
+  "pluginIcon": "plugin_icon.svg",
+  "serviceProvider": "ReturnTrackingToDeliveryNote\\Providers\\ReturnTrackingServiceProvider"
+}
