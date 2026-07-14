@@ -19,8 +19,8 @@ class ReturnTrackingServiceProvider extends ServiceProvider
             'ReturnTrackingToDeliveryNote',
             ProcedureEntry::EVENT_TYPE_ORDER,
             [
-                'de' => 'TEST: Retouren-Sendungsnummer im Plugin-Log ausgeben',
-                'en' => 'TEST: Write return tracking number to the plugin log'
+                'de' => 'TEST: Plugin-Build und Auftrags-ID im Log prüfen',
+                'en' => 'TEST: Verify plugin build and order ID in log'
             ],
             LogReturnTrackingNumber::class . '@execute',
             ProcedureEntry::PROCEDURE_GROUP_RETURN

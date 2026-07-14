@@ -1,61 +1,41 @@
-# Test: Retouren-Sendungsnummer auslesen
+# Minimaler Build-Diagnosetest
 
-Diese Testversion liest nach der Erzeugung eines Retourenlabels die neueste in
-PlentyONE gespeicherte Retouren-Sendungsnummer und gibt sie zusammen mit der
-Auftrags-ID im **Plugin-Log** aus.
+Version `0.4.0` dient ausschließlich dazu, den PlentyONE-Plugin-Build zu prüfen.
 
-Die Testversion verändert weder den Auftrag noch dessen Eigenschaften.
+## Sicherheitsumfang
 
-## Feste Sicherheitseinschränkung
+- Fest auf Auftrags-ID **468574** beschränkt.
+- Liest keine Retourendaten.
+- Greift nicht auf `ReturnsRepositoryContract` zu.
+- Ändert keine Auftragsdaten.
+- Verwendet keine externe Verbindung.
+- Schreibt nur einen festen Text in das PlentyONE-Plugin-Log.
+- Deklariert ausdrücklich PHP `>=8.0 <8.5`.
 
-Die Version `0.3.0` ist fest auf die Auftrags-ID **468574** beschränkt. Die
-Auftrags-ID wird geprüft, bevor das Retouren-Repository abgefragt wird. Für jeden
-anderen Auftrag beendet sich die Aktion sofort; es werden weder Retourendaten
-gelesen noch Logeinträge erzeugt oder Auftragsdaten geändert.
+## Testaktion
 
-## Warum das Plugin-Log statt einer lokalen TXT-Datei?
-
-Plugins laufen in der PlentyONE-Cloud und können dort keine beliebige lokale
-Textdatei dauerhaft auf dem Dateisystem ablegen. Das Plugin-Log ist die dafür
-vorgesehene persistente Textausgabe und kann in PlentyONE angezeigt, kopiert und
-für die Auswertung exportiert werden.
-
-## Ereignisaktion einrichten
-
-1. Plugin in das Plugin-Set aufnehmen, bereitstellen und aktivieren.
-2. Unter **Einrichtung » Aufträge » Ereignisse** eine neue Ereignisaktion anlegen.
-3. Als Ereignis **Dokumente » Retourenlabel generiert** wählen.
-4. Optional den Filter **Auftrag » Auftrag mit Retourenpaketnummer » Ja** setzen.
-5. Als Aktion unter **Plugins** bzw. **Retoure** die Aktion
-   **TEST: Retouren-Sendungsnummer im Plugin-Log ausgeben** wählen.
-6. Ereignisaktion aktivieren und speichern.
-
-Die vorhandene Aktion **Retoure beim Versanddienstleister anmelden** bleibt
-unverändert. Diese Testaktion soll erst nach der erfolgreichen Label-Erzeugung
-laufen.
-
-## Erwartete Textausgabe
-
-Bei Erfolg enthält das Plugin-Log einen Eintrag mit dem Identifier
-`ReturnTrackingToDeliveryNote::trackingNumberDetected` und beispielsweise:
+Die registrierte Ereignisaktion heißt:
 
 ```text
-Retourensendungsnummer 12345678901 gehört zu Auftrag 4711.
+TEST: Plugin-Build und Auftrags-ID im Log prüfen
 ```
 
-Zusätzlich werden die strukturierten Felder `orderId` und
-`returnTrackingNumber` ausgegeben.
+Wird sie für Auftrag 468574 ausgeführt, entsteht der Logeintrag:
 
-Wenn PlentyONE zu diesem Zeitpunkt keine Nummer liefert, erscheint der Identifier
-`ReturnTrackingToDeliveryNote::trackingNumberMissing`. Bei technischen Fehlern
-erscheint `ReturnTrackingToDeliveryNote::readFailed`.
+```text
+Minimaler Plugin-Test wurde für Auftrag 468574 ausgeführt.
+```
 
-## Abnahmetest
+Identifier:
 
-1. Für Auftrag **468574** ein GLS-ShipIT-Retourenlabel erzeugen.
-2. Den Bereich **Daten » Log** öffnen.
-3. Nach `ReturnTrackingToDeliveryNote` oder dem Plugin filtern.
-4. Prüfen, ob Auftrags-ID und GLS-Retourensendungsnummer korrekt ausgegeben wurden.
-5. Kontrollieren, dass die externe Lieferscheinnummer am Auftrag unverändert ist.
-6. Optional bei einem anderen Auftrag ein Label erzeugen und bestätigen, dass
-   dieses Plugin dafür keinen Logeintrag erzeugt.
+```text
+ReturnTrackingToDeliveryNote::minimalBuildTestSuccessful
+```
+
+Für alle anderen Aufträge beendet sich die Aktion ohne Logeintrag.
+
+## Zweck der Diagnose
+
+Wenn auch diese Minimalversion beim Bereitstellen ins Zeitlimit läuft, liegt die
+Ursache nicht an der Retourenabfrage. Wenn sie erfolgreich baut, wird die
+Retourenabfrage anschließend schrittweise wieder ergänzt.

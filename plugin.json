@@ -6,10 +6,13 @@
   },
   "namespace": "ReturnTrackingToDeliveryNote",
   "type": "general",
-  "version": "0.3.0",
+  "version": "0.4.0",
+  "platform": {
+    "php": ">=8.0 <8.5"
+  },
   "license": "MIT",
   "isClosedSource": false,
-  "description": "Test plugin restricted to order 468574 that writes the latest return tracking number and its order ID to the PlentyONE plugin log without changing the order.",
+  "description": "Minimal PHP 8 build diagnostic restricted to order 468574. It writes a fixed message to the PlentyONE plugin log without reading or changing order data.",
   "author": "Internal Development",
   "authorIcon": "author_icon.svg",
   "pluginIcon": "plugin_icon.svg",
