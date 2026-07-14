@@ -1,20 +1,8 @@
 {
   "name": "ReturnTrackingToDeliveryNote",
-  "marketplaceName": {
-    "de": "Retouren-Sendungsnummer als externe Lieferscheinnummer",
-    "en": "Return tracking number as external delivery note number"
-  },
+  "description": "Minimal build test",
   "namespace": "ReturnTrackingToDeliveryNote",
-  "type": "general",
-  "version": "0.5.0",
-  "platform": {
-    "php": ">=8.0 <8.5"
-  },
-  "license": "MIT",
-  "isClosedSource": false,
-  "description": "Zero-logic build diagnostic without events, logging or order access.",
   "author": "Internal Development",
-  "authorIcon": "author_icon.svg",
-  "pluginIcon": "plugin_icon.svg",
+  "type": "general",
   "serviceProvider": "ReturnTrackingToDeliveryNote\\Providers\\ReturnTrackingServiceProvider"
 }
