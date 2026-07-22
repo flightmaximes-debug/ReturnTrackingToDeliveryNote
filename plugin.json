@@ -1,0 +1,8 @@
+{
+  "name": "ReturnTrackingToDeliveryNote",
+  "description": "Safe return tracking diagnostic for order 468574",
+  "namespace": "ReturnTrackingToDeliveryNote",
+  "author": "Internal Development",
+  "type": "general",
+  "serviceProvider": "ReturnTrackingToDeliveryNote\\Providers\\ReturnTrackingServiceProvider"
+}
