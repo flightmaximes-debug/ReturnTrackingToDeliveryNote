@@ -12,8 +12,6 @@ class LogReturnTrackingNumber
 {
     use Loggable;
 
-    private const TEST_ORDER_ID = 468574;
-
     public function execute(
         EventProceduresTriggered $event,
         ReturnsRepositoryContract $returnsRepository,
@@ -21,12 +19,14 @@ class LogReturnTrackingNumber
     ) {
         $order = $event->getOrder();
 
-        if ($order === null || (int) $order->id !== self::TEST_ORDER_ID) {
+        if ($order === null || (int) $order->id <= 0) {
             return;
         }
 
+        $orderId = (int) $order->id;
+
         $paginatedReturns = $returnsRepository->getOrderReturns(
-            self::TEST_ORDER_ID,
+            $orderId,
             [],
             1,
             50,
@@ -39,7 +39,7 @@ class LogReturnTrackingNumber
         if (count($returns) === 0) {
             $this->getLogger(__METHOD__)->error(
                 'ReturnTrackingToDeliveryNote::noReturnFound',
-                ['orderId' => self::TEST_ORDER_ID]
+                ['orderId' => $orderId]
             );
             return;
         }
@@ -52,7 +52,7 @@ class LogReturnTrackingNumber
             $this->getLogger(__METHOD__)->error(
                 'ReturnTrackingToDeliveryNote::emptyReturnTrackingNumber',
                 [
-                    'orderId' => self::TEST_ORDER_ID,
+                    'orderId' => $orderId,
                     'returnId' => $return->id,
                 ]
             );
@@ -60,7 +60,7 @@ class LogReturnTrackingNumber
         }
 
         $existingProperties = $orderPropertyRepository->findByOrderId(
-            self::TEST_ORDER_ID,
+            $orderId,
             OrderPropertyType::EXTERNAL_DELIVERY_NUMBER
         );
 
@@ -74,7 +74,7 @@ class LogReturnTrackingNumber
             $this->getLogger(__METHOD__)->error(
                 'ReturnTrackingToDeliveryNote::externalDeliveryNumberAlreadySaved',
                 [
-                    'orderId' => self::TEST_ORDER_ID,
+                    'orderId' => $orderId,
                     'returnId' => $return->id,
                     'externalDeliveryNumber' => $trackingNumber
                 ]
@@ -83,7 +83,7 @@ class LogReturnTrackingNumber
         }
 
         $propertyData = [
-            'orderId' => self::TEST_ORDER_ID,
+            'orderId' => $orderId,
             'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
             'value' => $trackingNumber
         ];
@@ -97,7 +97,7 @@ class LogReturnTrackingNumber
         $this->getLogger(__METHOD__)->error(
             'ReturnTrackingToDeliveryNote::externalDeliveryNumberSaved',
             [
-                'orderId' => self::TEST_ORDER_ID,
+                'orderId' => $orderId,
                 'returnId' => $return->id,
                 'externalDeliveryNumber' => $trackingNumber,
                 'previousValue' => $existingProperty === null ? null : $existingProperty->value,
