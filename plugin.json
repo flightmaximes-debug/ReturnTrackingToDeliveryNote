@@ -1,6 +1,6 @@
 {
   "name": "ReturnTrackingToDeliveryNote",
-  "description": "Safely saves the latest return tracking number as the external delivery number for test order 468574",
+  "description": "Saves the latest return tracking number as the external delivery number of the corresponding order",
   "namespace": "ReturnTrackingToDeliveryNote",
   "author": "Internal Development",
   "type": "general",
