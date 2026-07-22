@@ -1,6 +1,6 @@
 {
   "name": "ReturnTrackingToDeliveryNote",
-  "description": "Safe return tracking diagnostic for order 468574",
+  "description": "Safely saves the latest return tracking number as the external delivery number for test order 468574",
   "namespace": "ReturnTrackingToDeliveryNote",
   "author": "Internal Development",
   "type": "general",
