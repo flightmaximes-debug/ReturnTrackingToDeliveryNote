@@ -19,8 +19,8 @@ class ReturnTrackingServiceProvider extends ServiceProvider
             'ReturnTrackingToDeliveryNote',
             ProcedureEntry::EVENT_TYPE_ORDER,
             [
-                'de' => 'TEST: Retouren-Sendungsnummer für Auftrag 468574 auslesen',
-                'en' => 'TEST: Read return tracking number for order 468574'
+                'de' => 'TEST: Retouren-Sendungsnummer als externe Lieferscheinnummer speichern (nur Auftrag 468574)',
+                'en' => 'TEST: Save return tracking number as external delivery number (order 468574 only)'
             ],
             LogReturnTrackingNumber::class . '@execute',
             ProcedureEntry::PROCEDURE_GROUP_RETURN
