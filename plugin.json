@@ -1,8 +1,0 @@
-{
-  "name": "ReturnTrackingToDeliveryNote",
-  "description": "Minimal build test",
-  "namespace": "ReturnTrackingToDeliveryNote",
-  "author": "Internal Development",
-  "type": "general",
-  "serviceProvider": "ReturnTrackingToDeliveryNote\\Providers\\ReturnTrackingServiceProvider"
-}
