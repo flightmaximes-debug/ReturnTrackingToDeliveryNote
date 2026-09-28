@@ -75,8 +75,10 @@ class LogReturnTrackingNumber
         $alreadySaved = $existingProperty !== null
             && (string) $existingProperty->value === $trackingNumber;
         $usedCompatibilityFallback = false;
+        $compatibilityWriteResult = null;
+        $fallbackOrderUpdateResult = null;
 
-        $orderRepository->update(
+        $orderUpdateResult = $orderRepository->update(
             $orderId,
             [
                 'properties' => [
@@ -106,14 +108,17 @@ class LogReturnTrackingNumber
             ];
 
             if ($verifiedProperty === null) {
-                $orderPropertyRepository->create($propertyData);
+                $compatibilityWriteResult = $orderPropertyRepository->create($propertyData);
             } else {
-                $orderPropertyRepository->update($propertyData, (int) $verifiedProperty->id);
+                $compatibilityWriteResult = $orderPropertyRepository->update(
+                    $propertyData,
+                    (int) $verifiedProperty->id
+                );
             }
 
             // Trigger the regular order update path once more so Plenty can refresh
             // all downstream order data, including the order search.
-            $orderRepository->update(
+            $fallbackOrderUpdateResult = $orderRepository->update(
                 $orderId,
                 [
                     'properties' => [
@@ -134,6 +139,12 @@ class LogReturnTrackingNumber
         }
 
         if ($verifiedProperty === null || (string) $verifiedProperty->value !== $trackingNumber) {
+            $propertyTypeDiagnostic = $this->getPropertyTypeDiagnostic($orderPropertyRepository);
+            $orderPropertiesDiagnostic = $this->getOrderPropertiesDiagnostic(
+                $orderPropertyRepository,
+                $orderId
+            );
+
             $this->getLogger(__METHOD__)->error(
                 'ReturnTrackingToDeliveryNote::externalDeliveryNumberVerificationFailed',
                 [
@@ -144,6 +155,14 @@ class LogReturnTrackingNumber
                         ? null
                         : (string) $verifiedProperty->value,
                     'usedCompatibilityFallback' => $usedCompatibilityFallback,
+                    'propertyTypeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                    'propertyTypeDiagnostic' => $propertyTypeDiagnostic,
+                    'firstOrderUpdateResult' => $this->describeOrderUpdateResult($orderUpdateResult),
+                    'compatibilityWriteResult' => $this->describeProperty($compatibilityWriteResult),
+                    'fallbackOrderUpdateResult' => $this->describeOrderUpdateResult(
+                        $fallbackOrderUpdateResult
+                    ),
+                    'orderPropertiesDiagnostic' => $orderPropertiesDiagnostic,
                     'fileName' => $return->fileName
                 ]
             );
@@ -192,5 +211,87 @@ class LogReturnTrackingNumber
         }
 
         return null;
+    }
+
+    private function getPropertyTypeDiagnostic(OrderPropertyRepositoryContract $repository)
+    {
+        try {
+            $type = $repository->getType(
+                OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                ['de', 'en']
+            );
+
+            if ($type === null) {
+                return ['found' => false];
+            }
+
+            return [
+                'found' => true,
+                'id' => isset($type->id) ? $type->id : null,
+                'cast' => isset($type->cast) ? $type->cast : null
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'found' => false,
+                'errorClass' => get_class($exception),
+                'errorMessage' => $exception->getMessage()
+            ];
+        }
+    }
+
+    private function getOrderPropertiesDiagnostic(
+        OrderPropertyRepositoryContract $repository,
+        $orderId
+    ) {
+        $diagnostic = [];
+
+        try {
+            $properties = $repository->findByOrderId($orderId);
+
+            foreach ($properties as $property) {
+                $diagnostic[] = [
+                    'id' => isset($property->id) ? $property->id : null,
+                    'typeId' => isset($property->typeId) ? $property->typeId : null,
+                    'isExpectedType' => isset($property->typeId)
+                        && (int) $property->typeId === OrderPropertyType::EXTERNAL_DELIVERY_NUMBER
+                ];
+            }
+        } catch (\Throwable $exception) {
+            return [
+                'readErrorClass' => get_class($exception),
+                'readErrorMessage' => $exception->getMessage()
+            ];
+        }
+
+        return $diagnostic;
+    }
+
+    private function describeProperty($property)
+    {
+        if ($property === null) {
+            return null;
+        }
+
+        return [
+            'id' => isset($property->id) ? $property->id : null,
+            'orderId' => isset($property->orderId) ? $property->orderId : null,
+            'typeId' => isset($property->typeId) ? $property->typeId : null,
+            'value' => isset($property->value) ? (string) $property->value : null
+        ];
+    }
+
+    private function describeOrderUpdateResult($order)
+    {
+        if ($order === null) {
+            return null;
+        }
+
+        $property = $this->findExternalDeliveryNumberProperty($order);
+
+        return [
+            'orderId' => isset($order->id) ? $order->id : null,
+            'containsExpectedProperty' => $property !== null,
+            'expectedProperty' => $this->describeProperty($property)
+        ];
     }
 }
