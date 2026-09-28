@@ -8,23 +8,17 @@ use Plenty\Modules\Order\Contracts\OrderRepositoryContract;
 use Plenty\Modules\Order\Property\Contracts\OrderPropertyRepositoryContract;
 use Plenty\Modules\Order\Property\Models\OrderPropertyType;
 use Plenty\Modules\Order\Shipping\Returns\Contracts\ReturnsRepositoryContract;
-use Plenty\Modules\Order\Transaction\Contracts\OrderItemTransactionRepositoryContract;
 use Plenty\Plugin\Log\Loggable;
 
 class LogReturnTrackingNumber
 {
     use Loggable;
 
-    // The transaction fallback changes data belonging to a completed goods issue.
-    // Keep it restricted until the Plenty order search has been verified manually.
-    private const TRANSACTION_FALLBACK_TEST_ORDER_ID = 87312;
-
     public function execute(
         EventProceduresTriggered $event,
         ReturnsRepositoryContract $returnsRepository,
         OrderRepositoryContract $orderRepository,
         OrderPropertyRepositoryContract $orderPropertyRepository,
-        OrderItemTransactionRepositoryContract $transactionRepository,
         AuthHelper $authHelper
     ) {
         $order = $event->getOrder();
@@ -159,30 +153,6 @@ class LogReturnTrackingNumber
         }
 
         if ($verifiedProperty === null || (string) $verifiedProperty->value !== $trackingNumber) {
-            $transactionFallback = $this->updateBookedOutgoingTransactions(
-                $orderId,
-                $trackingNumber,
-                $order,
-                $orderRepository,
-                $transactionRepository,
-                $authHelper
-            );
-
-            if ($transactionFallback['verified'] === true) {
-                $this->getLogger(__METHOD__)->error(
-                    'ReturnTrackingToDeliveryNote::transactionDeliveryNoteNumberSavedForTest',
-                    [
-                        'orderId' => $orderId,
-                        'returnId' => $return->id,
-                        'externalDeliveryNumber' => $trackingNumber,
-                        'testMode' => true,
-                        'transactionFallback' => $transactionFallback,
-                        'fileName' => $return->fileName
-                    ]
-                );
-                return;
-            }
-
             $propertyTypeDiagnostic = $this->getPropertyTypeDiagnostic($orderPropertyRepository);
             $orderPropertiesDiagnostic = $this->getOrderPropertiesDiagnostic(
                 $orderPropertyRepository,
@@ -207,7 +177,6 @@ class LogReturnTrackingNumber
                         $fallbackOrderUpdateResult
                     ),
                     'orderPropertiesDiagnostic' => $orderPropertiesDiagnostic,
-                    'transactionFallback' => $transactionFallback,
                     'fileName' => $return->fileName
                 ]
             );
@@ -228,130 +197,6 @@ class LogReturnTrackingNumber
                 'fileName' => $return->fileName
             ]
         );
-    }
-
-    private function updateBookedOutgoingTransactions(
-        $orderId,
-        $trackingNumber,
-        $eventOrder,
-        OrderRepositoryContract $orderRepository,
-        OrderItemTransactionRepositoryContract $transactionRepository,
-        AuthHelper $authHelper
-    ) {
-        if ((int) $orderId !== self::TRANSACTION_FALLBACK_TEST_ORDER_ID) {
-            return [
-                'attempted' => false,
-                'verified' => false,
-                'reason' => 'restrictedToTestOrder',
-                'testOrderId' => self::TRANSACTION_FALLBACK_TEST_ORDER_ID
-            ];
-        }
-
-        try {
-            $order = $orderRepository->findById($orderId, ['orderItems']);
-            if ($order === null || $order->orderItems === null) {
-                $order = $eventOrder;
-            }
-
-            if ($order === null || $order->orderItems === null) {
-                return [
-                    'attempted' => true,
-                    'verified' => false,
-                    'reason' => 'orderItemsUnavailable'
-                ];
-            }
-
-            $eligibleTransactionIds = [];
-            $previousValues = [];
-
-            foreach ($order->orderItems as $orderItem) {
-                if (!isset($orderItem->id) || (int) $orderItem->id <= 0) {
-                    continue;
-                }
-
-                $transactions = $transactionRepository->list((int) $orderItem->id);
-                foreach ($transactions as $transaction) {
-                    $isBookedOutgoingTransaction = isset($transaction->id)
-                        && (int) $transaction->id > 0
-                        && isset($transaction->direction)
-                        && (string) $transaction->direction === 'out'
-                        && isset($transaction->status)
-                        && (string) $transaction->status === 'regular'
-                        && isset($transaction->receiptId)
-                        && (int) $transaction->receiptId > 0;
-
-                    if (!$isBookedOutgoingTransaction) {
-                        continue;
-                    }
-
-                    $transactionId = (int) $transaction->id;
-                    $eligibleTransactionIds[$transactionId] = (int) $orderItem->id;
-                    $previousValues[$transactionId] = isset($transaction->deliveryNoteNumber)
-                        ? (string) $transaction->deliveryNoteNumber
-                        : null;
-                }
-            }
-
-            if (count($eligibleTransactionIds) === 0) {
-                return [
-                    'attempted' => true,
-                    'verified' => false,
-                    'reason' => 'noBookedOutgoingTransactions'
-                ];
-            }
-
-            foreach ($eligibleTransactionIds as $transactionId => $orderItemId) {
-                $authHelper->processUnguarded(
-                    function () use ($transactionRepository, $transactionId, $trackingNumber) {
-                        return $transactionRepository->update(
-                            $transactionId,
-                            ['deliveryNoteNumber' => $trackingNumber]
-                        );
-                    }
-                );
-            }
-
-            $verifiedTransactionIds = [];
-            foreach (array_unique(array_values($eligibleTransactionIds)) as $orderItemId) {
-                $transactions = $transactionRepository->list($orderItemId);
-                foreach ($transactions as $transaction) {
-                    if (!isset($transaction->id)) {
-                        continue;
-                    }
-
-                    $transactionId = (int) $transaction->id;
-                    if (!isset($eligibleTransactionIds[$transactionId])) {
-                        continue;
-                    }
-
-                    if (isset($transaction->deliveryNoteNumber)
-                        && (string) $transaction->deliveryNoteNumber === $trackingNumber
-                    ) {
-                        $verifiedTransactionIds[] = $transactionId;
-                    }
-                }
-            }
-
-            sort($verifiedTransactionIds);
-            $expectedTransactionIds = array_map('intval', array_keys($eligibleTransactionIds));
-            sort($expectedTransactionIds);
-
-            return [
-                'attempted' => true,
-                'verified' => $verifiedTransactionIds === $expectedTransactionIds,
-                'expectedTransactionIds' => $expectedTransactionIds,
-                'verifiedTransactionIds' => $verifiedTransactionIds,
-                'previousValues' => $previousValues
-            ];
-        } catch (\Throwable $exception) {
-            return [
-                'attempted' => true,
-                'verified' => false,
-                'reason' => 'exception',
-                'errorClass' => get_class($exception),
-                'errorMessage' => $exception->getMessage()
-            ];
-        }
     }
 
     private function findExternalDeliveryNumberProperty($order)
