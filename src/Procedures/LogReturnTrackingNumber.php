@@ -3,6 +3,7 @@
 namespace ReturnTrackingToDeliveryNote\Procedures;
 
 use Plenty\Modules\EventProcedures\Events\EventProceduresTriggered;
+use Plenty\Modules\Authorization\Services\AuthHelper;
 use Plenty\Modules\Order\Contracts\OrderRepositoryContract;
 use Plenty\Modules\Order\Property\Contracts\OrderPropertyRepositoryContract;
 use Plenty\Modules\Order\Property\Models\OrderPropertyType;
@@ -17,7 +18,8 @@ class LogReturnTrackingNumber
         EventProceduresTriggered $event,
         ReturnsRepositoryContract $returnsRepository,
         OrderRepositoryContract $orderRepository,
-        OrderPropertyRepositoryContract $orderPropertyRepository
+        OrderPropertyRepositoryContract $orderPropertyRepository,
+        AuthHelper $authHelper
     ) {
         $order = $event->getOrder();
 
@@ -78,16 +80,20 @@ class LogReturnTrackingNumber
         $compatibilityWriteResult = null;
         $fallbackOrderUpdateResult = null;
 
-        $orderUpdateResult = $orderRepository->update(
-            $orderId,
-            [
-                'properties' => [
+        $orderUpdateResult = $authHelper->processUnguarded(
+            function () use ($orderRepository, $orderId, $trackingNumber) {
+                return $orderRepository->update(
+                    $orderId,
                     [
-                        'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
-                        'value' => $trackingNumber
+                        'properties' => [
+                            [
+                                'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                                'value' => $trackingNumber
+                            ]
+                        ]
                     ]
-                ]
-            ]
+                );
+            }
         );
 
         // Some Plenty systems do not return legacy order properties on the current
@@ -107,27 +113,35 @@ class LogReturnTrackingNumber
                 'value' => $trackingNumber
             ];
 
-            if ($verifiedProperty === null) {
-                $compatibilityWriteResult = $orderPropertyRepository->create($propertyData);
-            } else {
-                $compatibilityWriteResult = $orderPropertyRepository->update(
-                    $propertyData,
-                    (int) $verifiedProperty->id
-                );
-            }
+            $compatibilityWriteResult = $authHelper->processUnguarded(
+                function () use ($orderPropertyRepository, $propertyData, $verifiedProperty) {
+                    if ($verifiedProperty === null) {
+                        return $orderPropertyRepository->create($propertyData);
+                    }
+
+                    return $orderPropertyRepository->update(
+                        $propertyData,
+                        (int) $verifiedProperty->id
+                    );
+                }
+            );
 
             // Trigger the regular order update path once more so Plenty can refresh
             // all downstream order data, including the order search.
-            $fallbackOrderUpdateResult = $orderRepository->update(
-                $orderId,
-                [
-                    'properties' => [
+            $fallbackOrderUpdateResult = $authHelper->processUnguarded(
+                function () use ($orderRepository, $orderId, $trackingNumber) {
+                    return $orderRepository->update(
+                        $orderId,
                         [
-                            'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
-                            'value' => $trackingNumber
+                            'properties' => [
+                                [
+                                    'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                                    'value' => $trackingNumber
+                                ]
+                            ]
                         ]
-                    ]
-                ]
+                    );
+                }
             );
 
             $verifiedProperty = $this->findFirstProperty(
