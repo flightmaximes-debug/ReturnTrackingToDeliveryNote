@@ -1,6 +1,6 @@
 {
   "name": "ReturnTrackingToDeliveryNote",
-  "description": "Saves the latest return tracking number as the external delivery number of the corresponding order",
+  "description": "Saves and verifies the latest return tracking number as the external delivery number of the corresponding order",
   "namespace": "ReturnTrackingToDeliveryNote",
   "author": "Internal Development",
   "type": "general",
