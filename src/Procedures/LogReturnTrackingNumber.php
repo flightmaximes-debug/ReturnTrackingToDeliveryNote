@@ -3,7 +3,7 @@
 namespace ReturnTrackingToDeliveryNote\Procedures;
 
 use Plenty\Modules\EventProcedures\Events\EventProceduresTriggered;
-use Plenty\Modules\Order\Property\Contracts\OrderPropertyRepositoryContract;
+use Plenty\Modules\Order\Contracts\OrderRepositoryContract;
 use Plenty\Modules\Order\Property\Models\OrderPropertyType;
 use Plenty\Modules\Order\Shipping\Returns\Contracts\ReturnsRepositoryContract;
 use Plenty\Plugin\Log\Loggable;
@@ -15,7 +15,7 @@ class LogReturnTrackingNumber
     public function execute(
         EventProceduresTriggered $event,
         ReturnsRepositoryContract $returnsRepository,
-        OrderPropertyRepositoryContract $orderPropertyRepository
+        OrderRepositoryContract $orderRepository
     ) {
         $order = $event->getOrder();
 
@@ -59,16 +59,8 @@ class LogReturnTrackingNumber
             return;
         }
 
-        $existingProperties = $orderPropertyRepository->findByOrderId(
-            $orderId,
-            OrderPropertyType::EXTERNAL_DELIVERY_NUMBER
-        );
-
-        $existingProperty = null;
-        foreach ($existingProperties as $property) {
-            $existingProperty = $property;
-            break;
-        }
+        $currentOrder = $orderRepository->findById($orderId);
+        $existingProperty = $this->findExternalDeliveryNumberProperty($currentOrder);
 
         if ($existingProperty !== null && (string) $existingProperty->value === $trackingNumber) {
             $this->getLogger(__METHOD__)->error(
@@ -82,16 +74,37 @@ class LogReturnTrackingNumber
             return;
         }
 
-        $propertyData = [
-            'orderId' => $orderId,
-            'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
-            'value' => $trackingNumber
-        ];
+        $orderRepository->update(
+            $orderId,
+            [
+                'properties' => [
+                    [
+                        'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                        'value' => $trackingNumber
+                    ]
+                ]
+            ]
+        );
 
-        if ($existingProperty === null) {
-            $orderPropertyRepository->create($propertyData);
-        } else {
-            $orderPropertyRepository->update($propertyData, (int) $existingProperty->id);
+        // Load the order again. A success log is only written when Plenty confirms
+        // that the value was persisted through the current order API.
+        $verifiedOrder = $orderRepository->findById($orderId);
+        $verifiedProperty = $this->findExternalDeliveryNumberProperty($verifiedOrder);
+
+        if ($verifiedProperty === null || (string) $verifiedProperty->value !== $trackingNumber) {
+            $this->getLogger(__METHOD__)->error(
+                'ReturnTrackingToDeliveryNote::externalDeliveryNumberVerificationFailed',
+                [
+                    'orderId' => $orderId,
+                    'returnId' => $return->id,
+                    'expectedExternalDeliveryNumber' => $trackingNumber,
+                    'storedExternalDeliveryNumber' => $verifiedProperty === null
+                        ? null
+                        : (string) $verifiedProperty->value,
+                    'fileName' => $return->fileName
+                ]
+            );
+            return;
         }
 
         $this->getLogger(__METHOD__)->error(
@@ -101,8 +114,24 @@ class LogReturnTrackingNumber
                 'returnId' => $return->id,
                 'externalDeliveryNumber' => $trackingNumber,
                 'previousValue' => $existingProperty === null ? null : $existingProperty->value,
+                'verifiedPropertyId' => $verifiedProperty->id,
                 'fileName' => $return->fileName
             ]
         );
+    }
+
+    private function findExternalDeliveryNumberProperty($order)
+    {
+        if ($order === null || $order->properties === null) {
+            return null;
+        }
+
+        foreach ($order->properties as $property) {
+            if ((int) $property->typeId === OrderPropertyType::EXTERNAL_DELIVERY_NUMBER) {
+                return $property;
+            }
+        }
+
+        return null;
     }
 }
