@@ -59,7 +59,7 @@ class LogReturnTrackingNumber
             return;
         }
 
-        $currentOrder = $orderRepository->findById($orderId);
+        $currentOrder = $orderRepository->findById($orderId, ['properties']);
         $existingProperty = $this->findExternalDeliveryNumberProperty($currentOrder);
 
         if ($existingProperty !== null && (string) $existingProperty->value === $trackingNumber) {
@@ -88,7 +88,7 @@ class LogReturnTrackingNumber
 
         // Load the order again. A success log is only written when Plenty confirms
         // that the value was persisted through the current order API.
-        $verifiedOrder = $orderRepository->findById($orderId);
+        $verifiedOrder = $orderRepository->findById($orderId, ['properties']);
         $verifiedProperty = $this->findExternalDeliveryNumberProperty($verifiedOrder);
 
         if ($verifiedProperty === null || (string) $verifiedProperty->value !== $trackingNumber) {
