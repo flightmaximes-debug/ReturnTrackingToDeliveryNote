@@ -4,6 +4,7 @@ namespace ReturnTrackingToDeliveryNote\Procedures;
 
 use Plenty\Modules\EventProcedures\Events\EventProceduresTriggered;
 use Plenty\Modules\Order\Contracts\OrderRepositoryContract;
+use Plenty\Modules\Order\Property\Contracts\OrderPropertyRepositoryContract;
 use Plenty\Modules\Order\Property\Models\OrderPropertyType;
 use Plenty\Modules\Order\Shipping\Returns\Contracts\ReturnsRepositoryContract;
 use Plenty\Plugin\Log\Loggable;
@@ -15,7 +16,8 @@ class LogReturnTrackingNumber
     public function execute(
         EventProceduresTriggered $event,
         ReturnsRepositoryContract $returnsRepository,
-        OrderRepositoryContract $orderRepository
+        OrderRepositoryContract $orderRepository,
+        OrderPropertyRepositoryContract $orderPropertyRepository
     ) {
         $order = $event->getOrder();
 
@@ -61,18 +63,18 @@ class LogReturnTrackingNumber
 
         $currentOrder = $orderRepository->findById($orderId, ['properties']);
         $existingProperty = $this->findExternalDeliveryNumberProperty($currentOrder);
-
-        if ($existingProperty !== null && (string) $existingProperty->value === $trackingNumber) {
-            $this->getLogger(__METHOD__)->error(
-                'ReturnTrackingToDeliveryNote::externalDeliveryNumberAlreadySaved',
-                [
-                    'orderId' => $orderId,
-                    'returnId' => $return->id,
-                    'externalDeliveryNumber' => $trackingNumber
-                ]
+        if ($existingProperty === null) {
+            $existingProperty = $this->findFirstProperty(
+                $orderPropertyRepository->findByOrderId(
+                    $orderId,
+                    OrderPropertyType::EXTERNAL_DELIVERY_NUMBER
+                )
             );
-            return;
         }
+
+        $alreadySaved = $existingProperty !== null
+            && (string) $existingProperty->value === $trackingNumber;
+        $usedCompatibilityFallback = false;
 
         $orderRepository->update(
             $orderId,
@@ -86,10 +88,50 @@ class LogReturnTrackingNumber
             ]
         );
 
-        // Load the order again. A success log is only written when Plenty confirms
-        // that the value was persisted through the current order API.
-        $verifiedOrder = $orderRepository->findById($orderId, ['properties']);
-        $verifiedProperty = $this->findExternalDeliveryNumberProperty($verifiedOrder);
+        // Some Plenty systems do not return legacy order properties on the current
+        // order model. Read the property repository directly for a reliable check.
+        $verifiedProperty = $this->findFirstProperty(
+            $orderPropertyRepository->findByOrderId(
+                $orderId,
+                OrderPropertyType::EXTERNAL_DELIVERY_NUMBER
+            )
+        );
+
+        if ($verifiedProperty === null || (string) $verifiedProperty->value !== $trackingNumber) {
+            $usedCompatibilityFallback = true;
+            $propertyData = [
+                'orderId' => $orderId,
+                'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                'value' => $trackingNumber
+            ];
+
+            if ($verifiedProperty === null) {
+                $orderPropertyRepository->create($propertyData);
+            } else {
+                $orderPropertyRepository->update($propertyData, (int) $verifiedProperty->id);
+            }
+
+            // Trigger the regular order update path once more so Plenty can refresh
+            // all downstream order data, including the order search.
+            $orderRepository->update(
+                $orderId,
+                [
+                    'properties' => [
+                        [
+                            'typeId' => OrderPropertyType::EXTERNAL_DELIVERY_NUMBER,
+                            'value' => $trackingNumber
+                        ]
+                    ]
+                ]
+            );
+
+            $verifiedProperty = $this->findFirstProperty(
+                $orderPropertyRepository->findByOrderId(
+                    $orderId,
+                    OrderPropertyType::EXTERNAL_DELIVERY_NUMBER
+                )
+            );
+        }
 
         if ($verifiedProperty === null || (string) $verifiedProperty->value !== $trackingNumber) {
             $this->getLogger(__METHOD__)->error(
@@ -101,6 +143,7 @@ class LogReturnTrackingNumber
                     'storedExternalDeliveryNumber' => $verifiedProperty === null
                         ? null
                         : (string) $verifiedProperty->value,
+                    'usedCompatibilityFallback' => $usedCompatibilityFallback,
                     'fileName' => $return->fileName
                 ]
             );
@@ -108,13 +151,16 @@ class LogReturnTrackingNumber
         }
 
         $this->getLogger(__METHOD__)->error(
-            'ReturnTrackingToDeliveryNote::externalDeliveryNumberSaved',
+            $alreadySaved
+                ? 'ReturnTrackingToDeliveryNote::externalDeliveryNumberAlreadySaved'
+                : 'ReturnTrackingToDeliveryNote::externalDeliveryNumberSaved',
             [
                 'orderId' => $orderId,
                 'returnId' => $return->id,
                 'externalDeliveryNumber' => $trackingNumber,
                 'previousValue' => $existingProperty === null ? null : $existingProperty->value,
                 'verifiedPropertyId' => $verifiedProperty->id,
+                'usedCompatibilityFallback' => $usedCompatibilityFallback,
                 'fileName' => $return->fileName
             ]
         );
@@ -130,6 +176,19 @@ class LogReturnTrackingNumber
             if ((int) $property->typeId === OrderPropertyType::EXTERNAL_DELIVERY_NUMBER) {
                 return $property;
             }
+        }
+
+        return null;
+    }
+
+    private function findFirstProperty($properties)
+    {
+        if ($properties === null) {
+            return null;
+        }
+
+        foreach ($properties as $property) {
+            return $property;
         }
 
         return null;
